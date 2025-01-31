@@ -1,0 +1,264 @@
+<?php
+$servername = "localhost";
+$username = "root";
+$password = "";
+$dbname = "wastedb";
+
+// Set the default timezone
+date_default_timezone_set('Asia/Manila');
+
+// Create a database connection
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+// Check connection
+if ($conn->connect_error) {
+  die("Connection failed: " . $conn->connect_error);
+}
+
+// Handle month and year navigation
+$year = isset($_GET['year']) ? $_GET['year'] : date("Y");
+$month = isset($_GET['month']) ? $_GET['month'] : date("m");
+
+// Determine the first and last days of the month
+$first_day_of_month = date("Y-m-01", strtotime("$year-$month-01"));
+$days_in_month = date("t", strtotime($first_day_of_month));
+$first_day_of_week = date("N", strtotime($first_day_of_month)); // 1 (for Monday) through 7 (for Sunday)
+
+// Fetch the sum of weights for each day in the current month
+$weight_sql = "SELECT DATE(timestamp) as day, SUM(weight) as total_weight FROM weight_data WHERE MONTH(timestamp) = '$month' AND YEAR(timestamp) = '$year' GROUP BY DATE(timestamp)";
+$weight_result = $conn->query($weight_sql);
+
+// Store weights and categories in an array
+$daily_weights = [];
+if ($weight_result->num_rows > 0) {
+  while ($weight_row = $weight_result->fetch_assoc()) {
+    $day = $weight_row['day'];
+    $total_weight = $weight_row['total_weight'];
+    // Categorize the weight based on thresholds
+    if ($total_weight >= 5) {
+      $category = "high"; // Red
+    } elseif ($total_weight >= 2) {
+      $category = "mid"; // Orange
+    } else {
+      $category = "low"; // Yellow
+    }
+    $daily_weights[$day] = ['total_weight' => $total_weight, 'category' => $category];
+  }
+}
+
+// Calculate the weight category for the entire month
+$category_counts = ["low" => 0, "mid" => 0, "high" => 0];
+foreach ($daily_weights as $day => $data) {
+  $category_counts[$data['category']]++;
+}
+
+// Determine the predominant category for the month
+$month_category = array_search(max($category_counts), $category_counts);
+
+// Calculate previous and next months
+$prev_month = date("m", strtotime("$year-$month-01 -1 month"));
+$prev_year = date("Y", strtotime("$year-$month-01 -1 month"));
+$next_month = date("m", strtotime("$year-$month-01 +1 month"));
+$next_year = date("Y", strtotime("$year-$month-01 +1 month"));
+
+// Check if the current displayed month is the same as the current month
+$is_current_month = ($year == date("Y") && $month == date("m"));
+
+$conn->close();
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wastic Pod Weight Tracker</title>
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      padding: 20px;
+      background-color: #f8f9fa;
+    }
+    .calendar-container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .calendar-navigation {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px; /* Increase gap size */
+    }
+    .calendar-header {
+      background: #ddd;
+      text-align: center;
+      padding: 15px; /* Increase padding */
+      font-weight: bold;
+      font-size: 20px; /* Larger font size */
+    }
+    .calendar-day {
+      padding: 30px; /* Increase padding for bigger cells */
+      text-align: center;
+      cursor: pointer;
+      border: 2px solid #ddd; /* Increase border size */
+      font-size: 24px; /* Larger day numbers */
+    }
+    .calendar-day.selected {
+      border: 3px solid #333;
+    }
+    .calendar-day.empty {
+      background: #f1f1f1;
+    }
+    .calendar-day.highlighted {
+      border: 3px solid black; /* Black border for selected day */
+    }
+    .btn {
+      margin: 5px;
+      font-size: 18px; /* Increase button font size */
+    }
+    .legend {
+      margin-left: 30px;
+      border: 1px solid #ddd;
+      padding: 20px;
+      background: #f9f9f9;
+    }
+    .legend h4 {
+      text-align: center;
+      margin-bottom: 15px;
+      font-size: 20px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .legend-color {
+      width: 30px;
+      height: 30px; /* Larger color boxes */
+      margin-right: 15px;
+    }
+    .color-high {
+      background: #ff4c4c; /* Red */
+    }
+    .color-mid {
+      background: #ffa500; /* Orange */
+    }
+    .color-low {
+      background: #ffff00; /* Yellow */
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1 style="font-size: 36px;">Wastic Pod Weight Tracker</h1> <!-- Increase title font size -->
+
+  <!-- Calendar Navigation -->
+  <div class="calendar-navigation">
+    <a href="index.php?month=<?php echo $prev_month; ?>&year=<?php echo $prev_year; ?>" class="btn btn-info">« Previous Month</a>
+    <span class="h4 mx-3" style="background-color: 
+    <?php
+    if ($month_category == "high") {
+      echo "#ff4c4c"; // Red
+    } elseif ($month_category == "mid") {
+      echo "#ffa500"; // Orange
+    } else {
+      echo "#ffff00"; // Yellow
+    }
+    ?>;">
+    <?php echo date("F Y", strtotime("$year-$month-01")); ?>
+    </span>
+    <?php if (!$is_current_month): ?>
+      <a href="index.php?month=<?php echo $next_month; ?>&year=<?php echo $next_year; ?>" class="btn btn-info">Next Month »</a>
+    <?php endif; ?>
+  </div>
+
+  <div class="calendar-container">
+    <!-- Calendar Display -->
+    <div class="calendar">
+      <!-- Day of the Week Headers -->
+      <div class="calendar-header">Mon</div>
+      <div class="calendar-header">Tue</div>
+      <div class="calendar-header">Wed</div>
+      <div class="calendar-header">Thu</div>
+      <div class="calendar-header">Fri</div>
+      <div class="calendar-header">Sat</div>
+      <div class="calendar-header">Sun</div>
+
+      <?php
+      // Print empty days before the first day of the current month
+      for ($i = 1; $i < $first_day_of_week; $i++) {
+        echo '<div class="calendar-day empty"></div>';
+      }
+
+      // Print all days of the current month
+      for ($day = 1; $day <= $days_in_month; $day++) {
+        $date = date("$year-$month-") . str_pad($day, 2, "0", STR_PAD_LEFT);
+        $class = $date == date("Y-m-d") ? "selected" : "";
+
+        // Determine the color category for each day based on the weight
+        $bg_color = "#fff"; // Default white background
+        if (isset($daily_weights[$date])) {
+          if ($daily_weights[$date]['category'] == "high") {
+            $bg_color = "#ff4c4c"; // Red
+          } elseif ($daily_weights[$date]['category'] == "mid") {
+            $bg_color = "#ffa500"; // Orange
+          } else {
+            $bg_color = "#ffff00"; // Yellow
+          }
+        }
+
+        echo "<div class='calendar-day $class' id='day-$date' style='background-color: $bg_color;' onclick=\"showSmallList('$date'); highlightDay('$date');\" ondblclick=\"goToWeightRecords('$date')\">$day</div>";
+      }
+      ?>
+    </div>
+
+    <!-- Color Legend -->
+    <div class="legend">
+      <h4>Color Legend</h4>
+      <div class="legend-item"><div class="legend-color color-high"></div>High Weight (≥ 5 kg)</div>
+      <div class="legend-item"><div class="legend-color color-mid"></div>Moderate Weight (≥ 2 kg)</div>
+      <div class="legend-item"><div class="legend-color color-low"></div>Low Weight (< 2 kg)</div>
+    </div>
+  </div>
+
+  <!-- Small List Display Area -->
+  <div id="smallList" class="mt-4"></div>
+</div>
+
+<!-- JavaScript to handle single and double click -->
+<script>
+  // Show a small list of records on single click
+  function showSmallList(date) {
+    const xhttp = new XMLHttpRequest();
+    xhttp.onload = function() {
+      document.getElementById("smallList").innerHTML = this.responseText;
+    }
+    xhttp.open("GET", `small_list.php?date=${date}`, true);
+    xhttp.send();
+  }
+
+  // Highlight the selected day
+  function highlightDay(date) {
+    // Remove highlight from previously selected days
+    const allDays = document.querySelectorAll(".calendar-day");
+    allDays.forEach(day => day.classList.remove("highlighted"));
+
+    // Highlight the selected day
+    document.getElementById(`day-${date}`).classList.add("highlighted");
+  }
+
+  // Navigate to the weight records page on double click
+  function goToWeightRecords(date) {
+    window.location.href = `weight_records.php?date=${date}`;
+  }
+</script>
+
+</body>
+</html>
